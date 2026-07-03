@@ -10,10 +10,10 @@
 仍属文化娱乐参考，建议用专业排盘软件复核。
 
 Usage:
-    python qizheng_pan.py <year> <month> <day> <hour> <minute> [city]
+    python qizheng_pan.py <year> <month> <day> <hour> <minute> <gender> [city]
 
 Example:
-    python qizheng_pan.py 1990 5 15 14 30 北京
+    python qizheng_pan.py 1990 5 15 14 30 男 北京
 """
 import json
 import math
@@ -80,7 +80,11 @@ THE_28_XIU = [
 
 _XIU_TOTAL_DEGREE = sum(x['degree'] for x in THE_28_XIU)
 
-# J2000 年角宿起始黄经近似值（现代天文），岁差约每 71.6 年退行 1°
+# 二十八宿起度参数（示意性经验值）。
+# 不同流派、不同历元的宿度起算差异较大，这里采用：
+#   - J2000 年角宿起点约 204° 黄经（传统宿度与现代黄道的粗略对应）
+#   - 岁差约每 71.6 年退行 1°
+# 若需要更高精度，可使用 swisseph 的恒星黄道（ayanamsa）自行校准。
 _XIU_J2000_START = 204.0
 _PRECESSION_YEAR = 71.6
 
@@ -413,52 +417,63 @@ def calculate_houses(asc_longitude, year):
 
 
 def main():
-    if len(sys.argv) < 6:
-        print("Usage: python qizheng_pan.py <year> <month> <day> <hour> <minute> [city]")
+    if len(sys.argv) < 7:
+        print("Usage: python qizheng_pan.py <year> <month> <day> <hour> <minute> <gender> [city]")
         sys.exit(1)
-    
+
     year = int(sys.argv[1])
     month = int(sys.argv[2])
     day = int(sys.argv[3])
     hour = int(sys.argv[4])
     minute = int(sys.argv[5])
-    city = sys.argv[6] if len(sys.argv) > 6 else None
-    
+    gender = sys.argv[6]
+    if gender not in ('男', '女'):
+        print("Error: gender must be 男 or 女")
+        sys.exit(1)
+    city = sys.argv[7] if len(sys.argv) > 7 else None
+
     # 获取基础数据（真太阳时 + 农历）
-    base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, '男', city)
-    
+    base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
+
     dt = datetime(year, month, day, hour, minute)
     lon = base.get('time_conversion', {}).get('longitude', 120.0)
     lat = base.get('time_conversion', {}).get('latitude', 39.9)
-    
+
+    # 七政四余排盘统一使用真太阳时
+    ts_str = base.get('time_conversion', {}).get('true_solar_time')
+    if ts_str:
+        calc_dt = datetime.strptime(ts_str, '%Y-%m-%d %H:%M')
+    else:
+        calc_dt = dt
+
     # 计算七政
-    qizheng = calculate_qizheng(dt, lat, lon)
-    
+    qizheng = calculate_qizheng(calc_dt, lat, lon)
+
     # 计算四余
-    siyu = calculate_siyu(dt, lat, lon)
-    
+    siyu = calculate_siyu(calc_dt, lat, lon)
+
     # 二十八宿（当日值宿）
     today_xiu = '未知'
     if Lunar is not None:
-        lunar_dt = Lunar(dt)
+        lunar_dt = Lunar(calc_dt)
         today_xiu = lunar_dt.get_the28Stars()
-    
+
     # 命宫/身宫/命度主/身度主
-    ming_shen = get_ming_shen_info(dt, lat, lon, qizheng)
-    
+    ming_shen = get_ming_shen_info(calc_dt, lat, lon, qizheng)
+
     # 十二宫
-    asc = lunar_convert.get_ascendant(dt, lat, lon)
-    houses = calculate_houses(asc, dt.year)
-    
+    asc = lunar_convert.get_ascendant(calc_dt, lat, lon)
+    houses = calculate_houses(asc, calc_dt.year)
+
     # 洞微大限
     mingdu_zhi = ming_shen['ming_gong']['zhi']
-    daxian = get_dongwei_daxian(year, '男', mingdu_zhi)
-    
+    daxian = get_dongwei_daxian(year, gender, mingdu_zhi)
+
     result = {
         'input': {
             'year': year, 'month': month, 'day': day,
             'hour': hour, 'minute': minute,
-            'city': city
+            'gender': gender, 'city': city
         },
         'time_conversion': base.get('time_conversion', {}),
         'disclaimer': '本排盘综合现代天文星历与常见古籍算法，七政四余流派众多、精度要求极高，不同软件结果可能存在差异。四余星、二十八宿躔度、命度主等仅供文化娱乐参考，强烈建议使用专业七政四余排盘软件复核。',
@@ -469,7 +484,7 @@ def main():
         'siyu': siyu,
         'daxian': daxian
     }
-    
+
     return result
 
 

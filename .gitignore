@@ -23,6 +23,8 @@ wheels/
 # Generated result files
 *_result.json
 *_result.md
+verify_*.json
+debug_*.txt
 
 # Virtual environments
 .env

@@ -7,10 +7,10 @@
 元素与模式统计、星盘格局识别。
 
 Usage:
-    python western_pan.py <year> <month> <day> <hour> <minute> <city>
+    python western_pan.py <year> <month> <day> <hour> <minute> <gender> <city>
 
 Example:
-    python western_pan.py 1990 5 15 14 30 北京
+    python western_pan.py 1990 5 15 14 30 男 北京
 """
 import json
 import math
@@ -397,29 +397,33 @@ def build_patterns(planet_details, houses, aspects):
 
 
 def main():
-    if len(sys.argv) < 7:
-        print("Usage: python western_pan.py <year> <month> <day> <hour> <minute> <city>")
+    if len(sys.argv) < 8:
+        print("Usage: python western_pan.py <year> <month> <day> <hour> <minute> <gender> <city>")
         sys.exit(1)
-    
+
     year = int(sys.argv[1])
     month = int(sys.argv[2])
     day = int(sys.argv[3])
     hour = int(sys.argv[4])
     minute = int(sys.argv[5])
-    city = sys.argv[6]
-    
+    gender = sys.argv[6]
+    if gender not in ('男', '女'):
+        print("Error: gender must be 男 or 女")
+        sys.exit(1)
+    city = sys.argv[7]
+
     # 获取基础数据
-    base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, '男', city)
+    base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
     western = base.get('western', {})
-    
+
     planets = western.get('planets', {})
     houses = western.get('houses', {})
     aspects = western.get('aspects', {})
-    
+
     dt = datetime(year, month, day, hour, minute)
     lon = base.get('time_conversion', {}).get('longitude', 120.0)
     lat = base.get('time_conversion', {}).get('latitude', 39.9)
-    
+
     # 1. Big Three
     asc = western.get('ascendant', {})
     big_three = {
@@ -476,7 +480,7 @@ def main():
         'input': {
             'year': year, 'month': month, 'day': day,
             'hour': hour, 'minute': minute,
-            'city': city
+            'gender': gender, 'city': city
         },
         'time_conversion': base.get('time_conversion', {}),
         'big_three': big_three,

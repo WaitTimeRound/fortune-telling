@@ -4,10 +4,13 @@
 基于 cnlunar + ephem + geopy，覆盖1901-2100年。
 """
 import json
+import logging
 import math
 import os
 import sys
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 try:
     from geopy.geocoders import Nominatim
@@ -15,19 +18,25 @@ try:
 except ImportError:
     Nominatim = None
     GeocoderTimedOut = Exception
-    print("Warning: geopy not installed. City geocoding will be limited to built-in coords.")
+    logger.warning("geopy not installed. City geocoding will be limited to built-in coords.")
 
 try:
     from cnlunar import Lunar
 except ImportError:
     Lunar = None
-    print("Warning: cnlunar not installed. Some features will be limited.")
+    logger.warning("cnlunar not installed. Some features will be limited.")
 
 try:
     import ephem
 except ImportError:
     ephem = None
-    print("Warning: ephem not installed. Western astrology features will be limited.")
+    logger.warning("ephem not installed. Western astrology features will be limited.")
+
+try:
+    import swisseph as swe
+except ImportError:
+    swe = None
+    logger.warning("swisseph not installed. Placidus house calculation will fall back to approximation.")
 
 # ========== 基础数据 ==========
 TIANGAN = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
@@ -138,7 +147,7 @@ def get_location(city_name):
             }
     except Exception as e:
         # 网络或 geopy 异常时不应中断主流程
-        print(f"Warning: geocoding failed for '{city_name}': {e}")
+        logger.warning("geocoding failed for '%s': %s", city_name, e)
     return None
 
 
@@ -189,7 +198,7 @@ def get_true_solar_time(dt, lon):
         
         return mean_solar + timedelta(minutes=eot_minutes)
     except Exception as e:
-        print(f"Warning: precise equation of time failed: {e}, falling back to longitude-only correction.")
+        logger.warning("precise equation of time failed: %s, falling back to longitude-only correction.", e)
         return mean_solar
 
 
@@ -299,16 +308,17 @@ def _get_mc_longitude(dt, lat, lon):
 
 def get_houses(dt, lat, lon, house_system='placidus'):
     """
-    计算宫位。目前支持等宫制（Equal House）和 Placidus 近似。
+    计算宫位。支持等宫制（Equal House）和 Placidus。
+    若已安装 swisseph，Placidus 使用真正的 Placidus 算法；否则回退到近似插值。
     返回: {house_number: {'cusp': deg, 'sign': str}}
     """
     if ephem is None:
         return {}
-    
+
     asc = get_ascendant(dt, lat, lon)
     if asc is None:
         return {}
-    
+
     houses = {}
     if house_system == 'equal':
         # 等宫制：每个宫位 30°，从上升点开始
@@ -317,24 +327,44 @@ def get_houses(dt, lat, lon, house_system='placidus'):
             sign_idx = int(cusp / 30) % 12
             houses[i] = {'cusp': round(cusp, 2), 'sign': WESTERN_SIGNS[sign_idx]}
     elif house_system == 'placidus':
-        # 简化 Placidus 分宫法：基于 ASC 与 MC 的球面插值近似
-        # 高纬度地区误差较大，仅供娱乐参考
+        # 优先使用 swisseph 实现真正的 Placidus 分宫
+        if swe is not None:
+            try:
+                # 使用 UTC 时间计算 Julian Day
+                utc = dt - timedelta(hours=8)
+                jd = swe.julday(utc.year, utc.month, utc.day,
+                                utc.hour + utc.minute / 60.0)
+                cusps, ascmc = swe.houses_ex(jd, lat, lon, b'P')
+                for i in range(1, 13):
+                    cusp = cusps[i - 1] % 360
+                    sign_idx = int(cusp / 30) % 12
+                    houses[i] = {'cusp': round(cusp, 2), 'sign': WESTERN_SIGNS[sign_idx]}
+                return houses
+            except Exception as e:
+                logger.warning("swisseph Placidus calculation failed: %s, falling back to approximation.", e)
+
+        # 回退：基于 ASC 与 MC 的球面插值近似
+        logger.warning("Falling back to approximate Placidus interpolation.")
         mc = _get_mc_longitude(dt, lat, lon)
         if mc is None:
             mc = (asc + 90) % 360
         dsc = (asc + 180) % 360
         ic = (mc + 180) % 360
-        
+
         def _interpolate_cusp(start, end, ratio):
             """沿黄道从 start 到 end 按比例插值，处理 360° 环绕"""
             if start <= end:
                 return start + (end - start) * ratio
             return (start + (end + 360 - start) * ratio) % 360
-        
+
         def _add_house(num, lon):
             sign_idx = int(lon / 30) % 12
-            houses[num] = {'cusp': round(lon, 2), 'sign': WESTERN_SIGNS[sign_idx]}
-        
+            houses[num] = {
+                'cusp': round(lon, 2),
+                'sign': WESTERN_SIGNS[sign_idx],
+                'approximate': True
+            }
+
         _add_house(1, asc)
         _add_house(10, mc)
         _add_house(7, dsc)
@@ -353,7 +383,7 @@ def get_houses(dt, lat, lon, house_system='placidus'):
             cusp = (asc + (i - 1) * 30) % 360
             sign_idx = int(cusp / 30) % 12
             houses[i] = {'cusp': round(cusp, 2), 'sign': WESTERN_SIGNS[sign_idx]}
-    
+
     return houses
 
 
@@ -575,7 +605,7 @@ def calculate_dayun(year_gan, gender, month_pillar, birth_dt, solar_terms=None):
                     days_diff = 30
             start_age = max(1, days_diff / 3)
         except (TypeError, ValueError, AttributeError) as e:
-            print(f"Warning: dayun start_age calculation failed: {e}, using default 3.")
+            logger.warning("dayun start_age calculation failed: %s, using default 3.", e)
             start_age = 3
     
     dayun_result = []

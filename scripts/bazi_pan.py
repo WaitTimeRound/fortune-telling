@@ -71,20 +71,62 @@ def analyze_pattern(pillars, wuxing_count, day_gan, month_zhi):
         strength = '偏弱'
     
     # 判断从格
-    # 从格：日主极弱或极旺，无根气
+    # 从格：日主极弱，无根气，月令亦为克/泄/耗，且天干不透印比。
     if score == 0 and not de_ling:
-        # 检查是否全盘克制日主
-        all_counter = True
-        for name in ['year', 'month', 'day', 'hour']:
-            gan = pillars[name][0]
-            zhi = pillars[name][1]
-            gan_element = lunar_convert.ELEMENT_TG[lunar_convert.TIANGAN.index(gan)]
-            zhi_element = lunar_convert.ELEMENT_DZ[lunar_convert.DIZHI.index(zhi)]
-            if gan != day_gan and (lunar_convert.WUXING_IDX[gan_element] - lunar_convert.WUXING_IDX[day_element]) % 5 not in [2, 3]:
-                all_counter = False
-                break
-        if all_counter:
-            return {'type': '从格', 'description': '日主极弱，无根气，从格成立', 'strength': '极弱'}
+        # 月令须为克、泄、耗日主之五行（不能是比劫/印星）
+        month_is_helper = (month_element == day_element) or \
+            (lunar_convert.WUXING_IDX[month_element] - lunar_convert.WUXING_IDX[day_element]) % 5 == 4
+        if not month_is_helper:
+            # 检查地支藏干是否有日主根气（同五行或印星）
+            has_root_in_canggan = False
+            for name in ['year', 'month', 'day', 'hour']:
+                zhi = pillars[name][1]
+                for cg in lunar_convert.DIZHI_CANGGAN[zhi]:
+                    cg_element = lunar_convert.ELEMENT_TG[lunar_convert.TIANGAN.index(cg)]
+                    if cg == day_gan:
+                        has_root_in_canggan = True
+                        break
+                    if (lunar_convert.WUXING_IDX[cg_element] - lunar_convert.WUXING_IDX[day_element]) % 5 in [0, 4]:
+                        has_root_in_canggan = True
+                        break
+                if has_root_in_canggan:
+                    break
+
+            # 检查天干是否透出印比（日主柱除外）
+            has_yinbi_in_tiangan = False
+            for name in ['year', 'month', 'hour']:
+                gan = pillars[name][0]
+                # 因 score == 0，其它柱天干不可能再是日主；若未来阈值调整，
+                # 此处将日主透干视为比劫根气，直接判定从格不成立。
+                if gan == day_gan:
+                    has_yinbi_in_tiangan = True
+                    break
+                gan_element = lunar_convert.ELEMENT_TG[lunar_convert.TIANGAN.index(gan)]
+                if gan_element == day_element:
+                    has_yinbi_in_tiangan = True
+                    break
+                if (lunar_convert.WUXING_IDX[gan_element] - lunar_convert.WUXING_IDX[day_element]) % 5 == 4:
+                    has_yinbi_in_tiangan = True
+                    break
+
+            # 检查是否全盘克制/泄/耗日主（日主天干本身不计入克制/泄/耗）
+            all_counter = True
+            for name in ['year', 'month', 'day', 'hour']:
+                gan = pillars[name][0]
+                zhi = pillars[name][1]
+                zhi_element = lunar_convert.ELEMENT_DZ[lunar_convert.DIZHI.index(zhi)]
+                if (lunar_convert.WUXING_IDX[zhi_element] - lunar_convert.WUXING_IDX[day_element]) % 5 not in [1, 2, 3]:
+                    all_counter = False
+                    break
+                # 日主天干本身为比劫，不视为克泄耗；其它柱天干若为印比则从格不成立
+                if gan != day_gan:
+                    gan_element = lunar_convert.ELEMENT_TG[lunar_convert.TIANGAN.index(gan)]
+                    if (lunar_convert.WUXING_IDX[gan_element] - lunar_convert.WUXING_IDX[day_element]) % 5 not in [1, 2, 3]:
+                        all_counter = False
+                        break
+
+            if all_counter and not has_root_in_canggan and not has_yinbi_in_tiangan:
+                return {'type': '从格', 'description': '日主极弱，无根气，从格成立', 'strength': '极弱'}
     
     # 正格判断
     # 根据月令十神判断格局
@@ -209,29 +251,34 @@ def analyze_dayun_quality(dayun_list, day_gan, xiyongshen):
     """
     day_element = lunar_convert.ELEMENT_TG[lunar_convert.TIANGAN.index(day_gan)]
     results = []
-    
+
+    # 喜用神类别集合
+    yinbi_stars = {'正印', '偏印', '比肩', '劫财'}
+    kexie_stars = {'正官', '七杀', '食神', '伤官', '正财', '偏财'}
+
     for dy in dayun_list:
         ganzhi = dy['ganzhi']
         gan = ganzhi[0]
         zhi = ganzhi[1]
         gan_element = lunar_convert.ELEMENT_TG[lunar_convert.TIANGAN.index(gan)]
         zhi_element = lunar_convert.ELEMENT_DZ[lunar_convert.DIZHI.index(zhi)]
-        
+
         shishen = lunar_convert.get_shishen(day_gan, gan)
-        
+
         # 简单评估：喜用神为吉，忌神为凶
         quality = '中平'
-        if shishen in ['正印', '偏印', '比肩', '劫财'] and xiyongshen['xiyong'].startswith('印星'):
+        xiyong = xiyongshen['xiyong']
+        if shishen in yinbi_stars and xiyong.startswith('印星'):
             quality = '吉'
-        elif shishen in ['正官', '七杀', '食神', '伤官', '正财', '偏财'] and '官杀' in xiyongshen['xiyong']:
+        elif shishen in kexie_stars and ('官杀' in xiyong or '食伤' in xiyong or '财星' in xiyong):
             quality = '吉'
-        
+
         results.append({
             **dy,
             'shishen': shishen,
             'quality': quality
         })
-    
+
     return results
 
 
@@ -246,8 +293,11 @@ def main():
     hour = int(sys.argv[4])
     minute = int(sys.argv[5])
     gender = sys.argv[6]
+    if gender not in ('男', '女'):
+        print("Error: gender must be 男 or 女")
+        sys.exit(1)
     city = sys.argv[7] if len(sys.argv) > 7 else None
-    
+
     # 获取基础数据
     base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
     

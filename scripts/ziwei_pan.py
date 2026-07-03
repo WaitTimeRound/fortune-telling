@@ -55,7 +55,9 @@ WUXING_JU = {
     ('癸', '未'): '土五局', ('癸', '酉'): '火六局', ('癸', '亥'): '火六局',
 }
 
-# 安紫微星表：五行局数 -> 生日 -> 紫微星位置（地支索引）
+# 安紫微星表：五行局数 -> 生日 -> 紫微星位置（地支索引）。
+# 说明：本表按「五行局 + 农历生日」查表，覆盖 1-30 日；闰月、顺逆局、
+# 不同流派起算规则有差异，超出 1-30 日时按周期回退处理。
 ZIWEI_TABLE = {
     '水二局': {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11,
               13: 0, 14: 1, 15: 2, 16: 3, 17: 4, 18: 5, 19: 6, 20: 7, 21: 8, 22: 9, 23: 10, 24: 11,
@@ -73,6 +75,13 @@ ZIWEI_TABLE = {
               13: 10, 14: 11, 15: 0, 16: 1, 17: 2, 18: 3, 19: 4, 20: 5, 21: 6, 22: 7, 23: 8, 24: 9,
               25: 10, 26: 11, 27: 0, 28: 1, 29: 2, 30: 3}
 }
+
+
+def _get_ziwei_pos(ju_name, lunar_day):
+    """查表安紫微星，超出 1-30 日时按周期回退。"""
+    table = ZIWEI_TABLE.get(ju_name, ZIWEI_TABLE['土五局'])
+    day = ((lunar_day - 1) % 30) + 1
+    return table.get(day, 0)
 
 # 主星排列：紫微、天机、太阳、武曲、天同、廉贞、天府、太阴、贪狼、巨门、天相、天梁、七杀、破军
 # 安星规则：紫微定后，天机在紫微前一宫，太阳在紫微前两宫，武曲在紫微前三宫，天同在紫微前四宫，廉贞在紫微前五宫
@@ -165,10 +174,9 @@ def set_zhu_stars(ming_gong_zhi, lunar_day, wuxing_ju):
     """安十四主星"""
     ju_name = wuxing_ju
     ju_num = get_wuxing_ju_number(ju_name)
-    day = lunar_day
-    
+
     # 安紫微星
-    ziwei_pos = ZIWEI_TABLE.get(ju_name, {}).get(day, 0)
+    ziwei_pos = _get_ziwei_pos(ju_name, lunar_day)
     
     # 安天机（紫微前一宫）
     tianji_pos = (ziwei_pos + 1) % 12
@@ -253,35 +261,35 @@ def set_sihua(year_gan, stars):
     return result
 
 
-def set_fuxing(ming_gong_zhi, lunar_month, lunar_day, year_gan):
+def set_fuxing(lunar_month, lunar_day, year_gan, hour_zhi_idx):
     """安辅星（简化）"""
     # 左辅：从辰宫起正月，顺数到生月
     zuofu_pos = (4 + lunar_month - 1) % 12
     # 右弼：从戌宫起正月，逆数到生月
     youbi_pos = (10 - lunar_month + 1 + 12) % 12
     # 文昌：从戌宫起子时，顺数到生时
-    wenchang_pos = (10 + 0) % 12  # 简化
+    wenchang_pos = (10 + hour_zhi_idx) % 12
     # 文曲：从辰宫起子时，逆数到生时
-    wenqu_pos = (4 - 0 + 12) % 12  # 简化
+    wenqu_pos = (4 - hour_zhi_idx + 12) % 12
     # 天魁：根据年干
     tiankui_map = {'甲': 11, '乙': 10, '丙': 9, '丁': 8, '戊': 7, '己': 6, '庚': 5, '辛': 4, '壬': 3, '癸': 2}
     tiankui_pos = tiankui_map.get(year_gan, 0)
     # 天钺
     tianyue_map = {'甲': 5, '乙': 6, '丙': 7, '丁': 8, '戊': 9, '己': 10, '庚': 11, '辛': 0, '壬': 1, '癸': 2}
     tianyue_pos = tianyue_map.get(year_gan, 0)
-    
+
     fuxing = {}
     for zhi_idx in range(12):
         zhi = lunar_convert.DIZHI[zhi_idx]
         fuxing[zhi] = []
-    
+
     fuxing[lunar_convert.DIZHI[zuofu_pos]].append('左辅')
     fuxing[lunar_convert.DIZHI[youbi_pos]].append('右弼')
     fuxing[lunar_convert.DIZHI[wenchang_pos]].append('文昌')
     fuxing[lunar_convert.DIZHI[wenqu_pos]].append('文曲')
     fuxing[lunar_convert.DIZHI[tiankui_pos]].append('天魁')
     fuxing[lunar_convert.DIZHI[tianyue_pos]].append('天钺')
-    
+
     return fuxing
 
 
@@ -358,8 +366,11 @@ def main():
     hour = int(sys.argv[4])
     minute = int(sys.argv[5])
     gender = sys.argv[6]
+    if gender not in ('男', '女'):
+        print("Error: gender must be 男 or 女")
+        sys.exit(1)
     city = sys.argv[7] if len(sys.argv) > 7 else None
-    
+
     # 使用 lunar_convert 获取真太阳时和农历数据
     base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
     
@@ -403,7 +414,7 @@ def main():
     sihua = set_sihua(year_gan, stars)
     
     # 安辅星
-    fuxing = set_fuxing(ming_gong_zhi, lunar_month, lunar_day, year_gan)
+    fuxing = set_fuxing(lunar_month, lunar_day, year_gan, hour_zhi_idx)
     
     # 获取各宫主星和状态
     gong_stars = {}
