@@ -353,9 +353,34 @@ def find_yods(aspects, planet_details):
     sextiles = [a for a in aspects if a['aspect'] == '六分相']
     quincunxes = [a for a in aspects if a['aspect'] == '梅花相']
     
-    # 如果没有梅花相，用150°近似（我们的 aspects 列表中没有梅花相，因为 get_aspects 只包含0/60/90/120/180）
-    # 所以这里只能基于已有数据，梅花相需要单独计算
-    # 为简化，如果已有 aspects 中没有150°，则跳过
+    # 为每个六分相找共同的梅花相顶点
+    for sextile in sextiles:
+        p1, p2 = sextile['planet1'], sextile['planet2']
+        
+        # 找出所有与 p1 梅花相且不是 p2 的行星
+        apex_from_p1 = set()
+        for q in quincunxes:
+            if q['planet1'] == p1 and q['planet2'] != p2:
+                apex_from_p1.add(q['planet2'])
+            elif q['planet2'] == p1 and q['planet1'] != p2:
+                apex_from_p1.add(q['planet1'])
+        
+        # 检查这些候选顶点是否也与 p2 梅花相
+        for apex in apex_from_p1:
+            found = False
+            for q in quincunxes:
+                if (q['planet1'] == apex and q['planet2'] == p2) or \
+                   (q['planet2'] == apex and q['planet1'] == p2):
+                    found = True
+                    break
+            if found:
+                yods.append({
+                    'type': 'yod',
+                    'description': f"{p1} 六分 {p2}，且均与 {apex} 梅花",
+                    'base': [p1, p2],
+                    'apex': apex,
+                    'planets': [p1, p2, apex]
+                })
     
     return yods
 

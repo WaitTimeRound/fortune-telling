@@ -176,11 +176,14 @@ def analyze_xiyongshen(pattern, wuxing_count, day_gan):
     strength = pattern['strength']
     
     # 扶抑用神：旺则泄/克，弱则生/助
-    if strength in ['偏旺', '极旺']:
+    if pattern['type'] == '从格':
+        # 从格：日主极弱无根，弃命从势，喜克泄耗
+        xiyong = '官杀、食伤、财星'
+    elif strength in ['偏旺', '极旺']:
         # 需要克、泄、耗
         # 克我者：官杀；我生者：食伤；我克者：财星
         xiyong = '官杀、食伤、财星'
-    elif strength in ['偏弱', '极弱']:
+    elif strength == '偏弱':
         # 需要生、助
         # 生我者：印星；同我者：比劫
         xiyong = '印星、比劫'

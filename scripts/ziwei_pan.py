@@ -333,7 +333,9 @@ def get_gong_ganzhi(ming_gong_zhi, year_gan):
     """计算各宫的天干地支"""
     # 根据五虎遁月法确定命宫天干
     year_gan_idx = lunar_convert.TIANGAN.index(year_gan)
-    ming_gan_idx = (year_gan_idx * 2 + 1) % 10
+    # 五虎遁月：甲己之年丙作首，乙庚之岁戊为头，丙辛之年寻庚起，
+    # 丁壬壬位顺行流，戊癸之年甲上求。
+    ming_gan_idx = (year_gan_idx * 2 + 2) % 10
     
     ganzhi = {}
     for i, gong_name in enumerate(ZHIWEI_GONG_ORDER):

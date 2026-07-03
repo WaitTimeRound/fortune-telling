@@ -9,8 +9,13 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut
+try:
+    from geopy.geocoders import Nominatim
+    from geopy.exc import GeocoderTimedOut
+except ImportError:
+    Nominatim = None
+    GeocoderTimedOut = Exception
+    print("Warning: geopy not installed. City geocoding will be limited to built-in coords.")
 
 try:
     from cnlunar import Lunar
@@ -72,14 +77,55 @@ PLANETS_CN = {'Sun': '太阳', 'Moon': '月亮', 'Mercury': '水星', 'Venus': '
 # ========== 地理位置查询 ==========
 _geolocator = None
 
+CITY_COORDS = {
+    '北京': {'lat': 39.9042, 'lon': 116.4074},
+    '北京市': {'lat': 39.9042, 'lon': 116.4074},
+    '上海': {'lat': 31.2304, 'lon': 121.4737},
+    '上海市': {'lat': 31.2304, 'lon': 121.4737},
+    '广州': {'lat': 23.1291, 'lon': 113.2644},
+    '广州市': {'lat': 23.1291, 'lon': 113.2644},
+    '深圳': {'lat': 22.5431, 'lon': 114.0579},
+    '深圳市': {'lat': 22.5431, 'lon': 114.0579},
+    '杭州': {'lat': 30.2741, 'lon': 120.1551},
+    '杭州市': {'lat': 30.2741, 'lon': 120.1551},
+    '南京': {'lat': 32.0603, 'lon': 118.7969},
+    '南京市': {'lat': 32.0603, 'lon': 118.7969},
+    '武汉': {'lat': 30.5928, 'lon': 114.3055},
+    '武汉市': {'lat': 30.5928, 'lon': 114.3055},
+    '成都': {'lat': 30.5728, 'lon': 104.0668},
+    '成都市': {'lat': 30.5728, 'lon': 104.0668},
+    '重庆': {'lat': 29.5630, 'lon': 106.5516},
+    '重庆市': {'lat': 29.5630, 'lon': 106.5516},
+    '西安': {'lat': 34.3416, 'lon': 108.9398},
+    '西安市': {'lat': 34.3416, 'lon': 108.9398},
+    '天津': {'lat': 39.0842, 'lon': 117.2009},
+    '天津市': {'lat': 39.0842, 'lon': 117.2009},
+    '香港': {'lat': 22.3193, 'lon': 114.1694},
+    '澳门': {'lat': 22.1987, 'lon': 113.5431},
+    '台北': {'lat': 25.0330, 'lon': 121.5654},
+    '台北市': {'lat': 25.0330, 'lon': 121.5654},
+}
+
 def _get_geolocator():
     global _geolocator
-    if _geolocator is None:
+    if _geolocator is None and Nominatim is not None:
         _geolocator = Nominatim(user_agent='fortune_telling_app/1.0')
     return _geolocator
 
 def get_location(city_name):
     """通过城市名称获取经纬度。返回 dict 或 None。"""
+    # 优先使用本地缓存，避免网络请求
+    key = city_name.strip()
+    if key in CITY_COORDS:
+        coords = CITY_COORDS[key]
+        return {
+            'name': city_name,
+            'lat': coords['lat'],
+            'lon': coords['lon'],
+            'display_name': city_name
+        }
+    if Nominatim is None:
+        return None
     try:
         geolocator = _get_geolocator()
         location = geolocator.geocode(city_name, language='zh', timeout=10)
@@ -90,8 +136,9 @@ def get_location(city_name):
                 'lon': location.longitude,
                 'display_name': location.address
             }
-    except GeocoderTimedOut:
-        pass
+    except Exception as e:
+        # 网络或 geopy 异常时不应中断主流程
+        print(f"Warning: geocoding failed for '{city_name}': {e}")
     return None
 
 
@@ -103,47 +150,47 @@ def get_true_solar_time(dt, lon):
     lon: 经度
     返回: datetime（真太阳时）
     """
-    if ephem is None:
-        # 简化版：仅经度修正
-        offset_minutes = (lon - 120.0) * 4.0
-        return dt + timedelta(minutes=offset_minutes)
-    
     # 1. 经度修正：平太阳时
     offset_minutes = (lon - 120.0) * 4.0
     mean_solar = dt + timedelta(minutes=offset_minutes)
     
-    # 2. 时差修正（Equation of Time）
-    # 使用 ephem 精确计算
-    utc = mean_solar - timedelta(hours=8)
+    if ephem is None:
+        # 无 ephem 时仅做经度修正
+        return mean_solar
     
-    observer = ephem.Observer()
-    observer.date = utc.strftime('%Y/%m/%d %H:%M:%S')
-    observer.lon = '0'  # 格林尼治
-    observer.lat = '0'
-    
-    sun = ephem.Sun(observer)
-    # 格林尼治平太阳时角 = 格林尼治恒星时 - 太阳赤经
-    gst = observer.sidereal_time()
-    ha = gst - sun.ra  # 太阳时角
-    # 真太阳时 = 12h + 时角（以时间计）
-    # 平太阳时 = 12h + 平太阳时角
-    # 时差 = 真太阳时 - 平太阳时
-    # 这里我们用太阳的赤经变化来估算时差
-    
-    # 更精确的方法：计算太阳的平黄经与真黄经差异
-    # 简化：使用 ephem 的 equation_of_equinoxes（均分差）
-    # 实际上 ephem 没有直接提供 equation_of_time，我们用近似公式
-    
-    # 计算一年中的第几天
-    day_of_year = mean_solar.timetuple().tm_yday
-    # 时差近似公式（单位：分钟）
-    # E = 9.87*sin(2B) - 7.53*cos(B) - 1.5*sin(B)
-    # B = 360*(N-81)/364
-    B = math.radians(360 * (day_of_year - 81) / 364)
-    eot = 9.87 * math.sin(2 * B) - 7.53 * math.cos(B) - 1.5 * math.sin(B)
-    
-    true_solar = mean_solar + timedelta(minutes=eot)
-    return true_solar
+    # 2. 精确时差修正（Equation of Time）
+    # 真太阳时 = 平太阳时 + 时差(EOT)
+    # EOT ≈ 4 * (RA_apparent - RA_mean) 分钟
+    try:
+        utc = mean_solar - timedelta(hours=8)
+        observer = ephem.Observer()
+        observer.date = utc.strftime('%Y/%m/%d %H:%M:%S')
+        observer.lon = '0'
+        observer.lat = '0'
+        
+        sun = ephem.Sun(observer)
+        ra_apparent = math.degrees(float(sun.ra))
+        
+        # 平太阳黄经：假设太阳沿黄道均匀运动
+        jd = ephem.Date(observer.date)
+        j2000 = ephem.Date('2000/01/01 12:00:00')
+        n = jd - j2000  # 从 J2000.0 起算的天数
+        eps = math.radians(23.4367)
+        l_mean = math.radians((280.46061837 + 0.985626283 * n) % 360)
+        # 平太阳赤经
+        ra_mean = math.degrees(math.atan2(
+            math.sin(l_mean) * math.cos(eps),
+            math.cos(l_mean)
+        ))
+        
+        # 时差（分钟），归一化到 [-720, 720] 避免环绕
+        eot_deg = (ra_apparent - ra_mean + 180) % 360 - 180
+        eot_minutes = eot_deg * 4.0  # 1° = 4 分钟
+        
+        return mean_solar + timedelta(minutes=eot_minutes)
+    except Exception as e:
+        print(f"Warning: precise equation of time failed: {e}, falling back to longitude-only correction.")
+        return mean_solar
 
 
 # ========== 上升星座与宫位计算 ==========
@@ -170,9 +217,12 @@ def get_ascendant(dt, lat, lon):
     lat_rad = math.radians(lat)
     eps = math.radians(23.4367)
     
-    x = -math.cos(lst_rad)
-    y = math.sin(eps) * math.tan(lat_rad) + math.cos(eps) * math.sin(lst_rad)
-    lambda_rad = math.atan2(x, y)
+    # 标准上升点黄经公式：
+    # lambda = atan2(cos(LST), -sin(eps)*tan(lat) - cos(eps)*sin(LST))
+    lambda_rad = math.atan2(
+        math.cos(lst_rad),
+        -math.sin(eps) * math.tan(lat_rad) - math.cos(eps) * math.sin(lst_rad)
+    )
     lambda_deg = math.degrees(lambda_rad)
     if lambda_deg < 0:
         lambda_deg += 360
@@ -226,6 +276,27 @@ def get_planet_positions(dt, lat, lon):
     return result
 
 
+def _get_mc_longitude(dt, lat, lon):
+    """计算中天（MC）黄经"""
+    if ephem is None:
+        return None
+    observer = ephem.Observer()
+    observer.lat = str(lat)
+    observer.lon = str(lon)
+    observer.elevation = 0
+    utc = dt - timedelta(hours=8)
+    observer.date = utc.strftime('%Y/%m/%d %H:%M:%S')
+    lst = observer.sidereal_time()
+    lst_deg = math.degrees(float(lst))
+    eps = math.radians(23.4367)
+    # MC：本地子午圈与黄道的上交点
+    mc = math.degrees(math.atan2(
+        math.sin(math.radians(lst_deg)) / math.cos(eps),
+        math.cos(math.radians(lst_deg))
+    ))
+    return mc % 360
+
+
 def get_houses(dt, lat, lon, house_system='placidus'):
     """
     计算宫位。目前支持等宫制（Equal House）和 Placidus 近似。
@@ -245,9 +316,39 @@ def get_houses(dt, lat, lon, house_system='placidus'):
             cusp = (asc + (i - 1) * 30) % 360
             sign_idx = int(cusp / 30) % 12
             houses[i] = {'cusp': round(cusp, 2), 'sign': WESTERN_SIGNS[sign_idx]}
+    elif house_system == 'placidus':
+        # 简化 Placidus 分宫法：基于 ASC 与 MC 的球面插值近似
+        # 高纬度地区误差较大，仅供娱乐参考
+        mc = _get_mc_longitude(dt, lat, lon)
+        if mc is None:
+            mc = (asc + 90) % 360
+        dsc = (asc + 180) % 360
+        ic = (mc + 180) % 360
+        
+        def _interpolate_cusp(start, end, ratio):
+            """沿黄道从 start 到 end 按比例插值，处理 360° 环绕"""
+            if start <= end:
+                return start + (end - start) * ratio
+            return (start + (end + 360 - start) * ratio) % 360
+        
+        def _add_house(num, lon):
+            sign_idx = int(lon / 30) % 12
+            houses[num] = {'cusp': round(lon, 2), 'sign': WESTERN_SIGNS[sign_idx]}
+        
+        _add_house(1, asc)
+        _add_house(10, mc)
+        _add_house(7, dsc)
+        _add_house(4, ic)
+        _add_house(12, _interpolate_cusp(asc, mc, 1/3))
+        _add_house(11, _interpolate_cusp(asc, mc, 2/3))
+        _add_house(9, _interpolate_cusp(mc, dsc, 1/3))
+        _add_house(8, _interpolate_cusp(mc, dsc, 2/3))
+        _add_house(6, _interpolate_cusp(dsc, ic, 1/3))
+        _add_house(5, _interpolate_cusp(dsc, ic, 2/3))
+        _add_house(3, _interpolate_cusp(ic, asc, 1/3))
+        _add_house(2, _interpolate_cusp(ic, asc, 2/3))
     else:
-        # Placidus 近似：使用简单公式
-        # 这里使用等宫制作为近似，实际 Placidus 需要更复杂的计算
+        # 未知分宫制：回退到等宫制
         for i in range(1, 13):
             cusp = (asc + (i - 1) * 30) % 360
             sign_idx = int(cusp / 30) % 12
@@ -271,7 +372,8 @@ def get_aspects(planet_positions, orb=8):
         '六分相': 60,
         '刑相': 90,
         '拱相': 120,
-        '冲相': 180
+        '冲相': 180,
+        '梅花相': 150
     }
     
     for i in range(len(planet_names)):
@@ -472,7 +574,8 @@ def calculate_dayun(year_gan, gender, month_pillar, birth_dt, solar_terms=None):
                 else:
                     days_diff = 30
             start_age = max(1, days_diff / 3)
-        except:
+        except (TypeError, ValueError, AttributeError) as e:
+            print(f"Warning: dayun start_age calculation failed: {e}, using default 3.")
             start_age = 3
     
     dayun_result = []
@@ -697,7 +800,9 @@ def _calc_hour_pillar(year, month, day, hour, minute):
         zhi_idx = (hour + 1) // 2 % 12
     else:
         zhi_idx = hour // 2 % 12
-    hour_gan_start = (day_gan_idx * 2 + 1) % 10 - 2
+    # 时干起法：甲己还加甲，乙庚丙作初，丙辛从戊起，
+    # 丁壬庚子居，戊癸何方发，壬子是真途。
+    hour_gan_start = (day_gan_idx % 5) * 2
     hour_gan_idx = (hour_gan_start + zhi_idx) % 10
     return f"{TIANGAN[hour_gan_idx]}{DIZHI[zhi_idx]}"
 
