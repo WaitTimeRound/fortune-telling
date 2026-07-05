@@ -1,5 +1,18 @@
 # 更新日志
 
+## 2026-07-05
+
+### 文档审查与修正
+
+- 修正 `references/qizheng-guide.md` 中罗睺/计都南北交点定义，与 `scripts/qizheng_pan.py` 脚本保持一致（罗睺 = 升交点/北交点，计都 = 降交点/南交点）
+- 扩充 `references/ziwei-guide.md` 与 `references/qizheng-guide.md` 的三维度策略建议，确保每个维度至少 6 条具体行为指南
+- 统一 `SKILL.md` 与 `README.md` 的真太阳时公式，补充均时差（EOT）说明
+- 在 `SKILL.md` 各体系结构要求中明确“精度声明/前置声明”章节，并扩展占位符替换说明
+- 在 `README.md` 项目结构中补充 `docs/superpowers/` 目录
+- 在 `references/cross-summary-guide.md` 开运建议表格中增加“七政四余建议”列
+- 优化 `references/bazi-guide.md` 调候用神示例表述
+- 重新编号 `docs/superpowers/specs/2026-07-03-code-review-fixes-design.md` 中的问题列表为连续 1-11
+
 ## 2026-07-03
 
 ### 修复

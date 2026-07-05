@@ -17,7 +17,7 @@
 | 1 | 大运吉凶判断只检查「官杀」，漏判「食伤」「财星」 | `scripts/bazi_pan.py` | 将条件拆分为对「官杀」「食伤」「财星」三组十神的完整匹配 |
 | 2 | 七政洞微大限性别硬编码为男 | `scripts/qizheng_pan.py` | `main()` 增加 `gender` 参数，透传给 `get_dongwei_daxian` |
 | 3 | 紫微文昌/文曲安星写死子时 | `scripts/ziwei_pan.py` | `set_fuxing()` 增加 `hour_zhi_idx` 参数，按实际出生时辰计算 |
-| 11 | 文档编号错误 | `references/western-guide.md`、`references/bazi-guide.md` | 修正 western-guide 中重复的「七、」；检查 bazi-guide 章节口径 |
+| 4 | 文档编号错误 | `references/western-guide.md`、`references/bazi-guide.md` | 修正 western-guide 中重复的「七、」；检查 bazi-guide 章节口径 |
 
 #### CLI 兼容性说明
 
@@ -29,9 +29,9 @@
 
 | # | 问题 | 文件 | 修复方式 |
 |---|------|------|----------|
-| 8 | 多处 gender='男' 硬编码 | `scripts/western_pan.py`、`scripts/qizheng_pan.py` | `western_pan.py` 增加 `gender` 参数并透传；`qizheng_pan.py` 中第一批已处理 |
-| 9 | `print()` 警告污染 stdout | `scripts/lunar_convert.py` 等 | 引入 `logging` 模块，将 `print("Warning: ...")` 替换为 `logging.warning(...)` |
-| 10 | 七政 today_xiu 用未换算真太阳时的 dt | `scripts/qizheng_pan.py` | 使用 `base['time_conversion']['true_solar_time']` 构造 `datetime` 后再取二十八宿 |
+| 5 | 多处 gender='男' 硬编码 | `scripts/western_pan.py`、`scripts/qizheng_pan.py` | `western_pan.py` 增加 `gender` 参数并透传；`qizheng_pan.py` 中第一批已处理 |
+| 6 | `print()` 警告污染 stdout | `scripts/lunar_convert.py` 等 | 引入 `logging` 模块，将 `print("Warning: ...")` 替换为 `logging.warning(...)` |
+| 7 | 七政 today_xiu 用未换算真太阳时的 dt | `scripts/qizheng_pan.py` | 使用 `base['time_conversion']['true_solar_time']` 构造 `datetime` 后再取二十八宿 |
 
 #### CLI 兼容性说明
 
@@ -43,10 +43,10 @@
 
 | # | 问题 | 文件 | 修复方式 |
 |---|------|------|----------|
-| 4 | 紫微安星表覆盖不全 | `scripts/ziwei_pan.py` | 扩展 `ZIWEI_TABLE` 或增加闰月/顺逆局处理；至少补全常见边界 |
-| 5 | 西方占星宫位是近似 Placidus | `scripts/lunar_convert.py` | 实现真正的 Placidus 分宫算法，或显式降级为等宫制并更名 |
-| 6 | 七政二十八宿起度是经验值 | `scripts/qizheng_pan.py` | 引入更精确的岁差与宿度起算；至少说明参数来源 |
-| 7 | 八字从格判断过于粗糙 | `scripts/bazi_pan.py` | 细化从格判断，增加地支藏干、月令强度等综合判断 |
+| 8 | 紫微安星表覆盖不全 | `scripts/ziwei_pan.py` | 扩展 `ZIWEI_TABLE` 或增加闰月/顺逆局处理；至少补全常见边界 |
+| 9 | 西方占星宫位是近似 Placidus | `scripts/lunar_convert.py` | 实现真正的 Placidus 分宫算法，或显式降级为等宫制并更名 |
+| 10 | 七政二十八宿起度是经验值 | `scripts/qizheng_pan.py` | 引入更精确的岁差与宿度起算；至少说明参数来源 |
+| 11 | 八字从格判断过于粗糙 | `scripts/bazi_pan.py` | 细化从格判断，增加地支藏干、月令强度等综合判断 |
 
 #### 风险说明
 

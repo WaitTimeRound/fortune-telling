@@ -29,6 +29,9 @@
 │   ├── ziwei_pan.py     # 紫微斗数排盘
 │   ├── qizheng_pan.py   # 七政四余排盘
 │   └── western_pan.py   # 西方占星排盘
+├── docs/                # 设计文档与规范
+│   └── superpowers/
+│       └── specs/       # 代码审查与修复设计文档
 ├── SKILL.md             # Kimi 技能说明（解读工作流）
 ├── CHANGELOG.md         # 更新日志
 └── README.md            # 本文件
