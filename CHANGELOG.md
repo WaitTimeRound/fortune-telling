@@ -2,6 +2,31 @@
 
 ## 2026-07-05
 
+### 代码审查与核心算法修复
+
+- 修复 `scripts/lunar_convert.py` 真太阳时均时差（EOT）符号错误（`ra_mean - ra_apparent`）
+- 修复西方占星使用北京时间计算的问题，改为使用出生地地方平时
+- 修复 `scripts/bazi_pan.py` 八字格局判断误用月干的问题，改为月令地支本气定格局
+- 修复 `scripts/ziwei_pan.py` 紫微斗数未透传真太阳时的问题
+- 修复 `scripts/qizheng_pan.py` 七政四余洞微大限使用公历年判断阴阳的问题，改为使用八字年柱天干
+- 修复八字起运年龄仍用北京时间的问题，改为真太阳时
+- 修复 `scripts/qizheng_pan.py` 四余星降级描述中罗睺/计都南北交点写反的问题
+- 修复 `scripts/western_pan.py` T 三角格局识别只考虑单向刑相的问题
+- 优化 `scripts/lunar_convert.py` 相位容许度：按相位类型分别设定（梅花相收紧至 2°）
+- 优化 `scripts/bazi_pan.py` 大运质量评估，将喜用神描述展开为具体十神集合后再匹配
+- 为四个排盘脚本统一添加 `argparse` CLI 参数解析与日期合法性校验
+- 统一默认城市坐标为北京 `116.4074°E, 39.9042°N`，与 `README.md` 保持一致
+- 优化 `scripts/lunar_convert.py` fallback 路径中 23:00 规则的处理逻辑
+- 修复 `scripts/ziwei_pan.py` 十二宫常量重复定义
+- 修复 `scripts/lunar_convert.py` ephem 缺失时真太阳时静默降级的问题
+- 修复 `scripts/western_pan.py` 行星缺失时回退到 0°白羊座的误导性问题
+- 修复 `scripts/western_pan.py` `get_planet_in_house` 未找到宫位时默认返回 1 的问题
+- 更新 `scripts/verify_fixes.py` 以适配新的 argparse 错误信息
+
+## 2026-07-05
+
+### 文档审查与修正
+
 ### 文档审查与修正
 
 - 修正 `references/qizheng-guide.md` 中罗睺/计都南北交点定义，与 `scripts/qizheng_pan.py` 脚本保持一致（罗睺 = 升交点/北交点，计都 = 降交点/南交点）

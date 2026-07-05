@@ -11,6 +11,7 @@ Usage:
 Example:
     python ziwei_pan.py 1990 5 15 14 30 男 北京
 """
+import argparse
 import json
 import os
 import sys
@@ -28,8 +29,7 @@ except ImportError:
 # ========== 紫微斗数基础数据 ==========
 ZHIWEI_GONGS = ['命宫', '兄弟', '夫妻', '子女', '财帛', '疾厄',
                 '迁移', '仆役', '官禄', '田宅', '福德', '父母']
-ZHIWEI_GONG_ORDER = ['命宫', '兄弟', '夫妻', '子女', '财帛', '疾厄',
-                     '迁移', '仆役', '官禄', '田宅', '福德', '父母']
+ZHIWEI_GONG_ORDER = ZHIWEI_GONGS
 
 # 五行局：根据命宫干支确定
 WUXING_JU = {
@@ -356,40 +356,50 @@ def get_gong_ganzhi(ming_gong_zhi, year_gan):
 
 
 def main():
-    if len(sys.argv) < 7:
-        print("Usage: python ziwei_pan.py <year> <month> <day> <hour> <minute> <gender> [city]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='紫微斗数排盘（简化版）')
+    parser.add_argument('year', type=int, help='出生年份')
+    parser.add_argument('month', type=int, help='出生月份 (1-12)')
+    parser.add_argument('day', type=int, help='出生日期 (1-31)')
+    parser.add_argument('hour', type=int, help='出生小时 (0-23)')
+    parser.add_argument('minute', type=int, help='出生分钟 (0-59)')
+    parser.add_argument('gender', choices=['男', '女'], help='性别')
+    parser.add_argument('city', nargs='?', default=None, help='出生城市（可选）')
+    args = parser.parse_args()
     
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    day = int(sys.argv[3])
-    hour = int(sys.argv[4])
-    minute = int(sys.argv[5])
-    gender = sys.argv[6]
-    if gender not in ('男', '女'):
-        print("Error: gender must be 男 or 女")
-        sys.exit(1)
-    city = sys.argv[7] if len(sys.argv) > 7 else None
+    try:
+        datetime(args.year, args.month, args.day, args.hour, args.minute)
+    except ValueError as e:
+        parser.error(f"无效日期时间: {e}")
+    
+    year, month, day, hour, minute, gender, city = \
+        args.year, args.month, args.day, args.hour, args.minute, args.gender, args.city
 
     # 使用 lunar_convert 获取真太阳时和农历数据
     base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
     
+    # 使用真太阳时进行紫微排盘
+    true_solar_str = base.get('time_conversion', {}).get('true_solar_time')
+    if true_solar_str:
+        ts = datetime.strptime(true_solar_str, '%Y-%m-%d %H:%M')
+    else:
+        ts = datetime(year, month, day, hour, minute)
+    
     # 获取农历信息
     if Lunar is not None:
-        dt = datetime(year, month, day, hour, minute)
-        lunar = Lunar(dt)
+        lunar = Lunar(ts)
         lunar_info = lunar.get_lunarDateNum()
         lunar_month = lunar_info[1]
         lunar_day = lunar_info[2]
     else:
-        lunar_month = month
-        lunar_day = day
+        lunar_month = ts.month
+        lunar_day = ts.day
     
-    # 时辰地支索引
-    if hour % 2 == 1:
-        hour_zhi_idx = (hour + 1) // 2 % 12
+    # 时辰地支索引（按真太阳时小时计算）
+    ts_hour = ts.hour
+    if ts_hour % 2 == 1:
+        hour_zhi_idx = (ts_hour + 1) // 2 % 12
     else:
-        hour_zhi_idx = hour // 2 % 12
+        hour_zhi_idx = ts_hour // 2 % 12
     
     # 安命宫、身宫
     ming_gong_zhi, shen_gong_zhi = get_ming_shen_gong(lunar_month, lunar_day, hour_zhi_idx)

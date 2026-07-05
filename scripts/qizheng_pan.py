@@ -15,6 +15,7 @@ Usage:
 Example:
     python qizheng_pan.py 1990 5 15 14 30 男 北京
 """
+import argparse
 import json
 import math
 import os
@@ -295,13 +296,13 @@ def calculate_siyu(dt, lat, lon):
                 'longitude': round((moon_lon + 180) % 360, 2),
                 **get_xiu_from_longitude((moon_lon + 180) % 360, dt.year),
                 'status': '示意（未接入精密星历）',
-                'description': '南交点，前世业力'
+                'description': '白道升交点（北交点），先天禀赋与惯性执着'
             }
             result['计都'] = {
                 'longitude': round(moon_lon, 2),
                 **get_xiu_from_longitude(moon_lon, dt.year),
                 'status': '示意（未接入精密星历）',
-                'description': '北交点，今生成长方向'
+                'description': '白道降交点（南交点），今生成长方向与业力转化'
             }
         if '木星' in qizheng:
             jupiter_lon = qizheng['木星']['longitude']
@@ -364,13 +365,14 @@ def get_ming_shen_info(dt, lat, lon, qizheng):
     }
 
 
-def get_dongwei_daxian(year, gender, mingdu_zhi, start_age=1):
+def get_dongwei_daxian(year_gan, gender, mingdu_zhi, start_age=1):
     """
     洞微大限。
     以命宫为起点，每宫 10 年。
     阳男阴女顺行，阴男阳女逆行。
+    year_gan: 年柱天干（如 '甲'、'己'）
     """
-    year_gan_idx = (year - 4) % 10
+    year_gan_idx = lunar_convert.TIANGAN.index(year_gan)
     is_yang = year_gan_idx % 2 == 0
     forward = (is_yang and gender == '男') or (not is_yang and gender == '女')
     
@@ -417,27 +419,30 @@ def calculate_houses(asc_longitude, year):
 
 
 def main():
-    if len(sys.argv) < 7:
-        print("Usage: python qizheng_pan.py <year> <month> <day> <hour> <minute> <gender> [city]")
-        sys.exit(1)
-
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    day = int(sys.argv[3])
-    hour = int(sys.argv[4])
-    minute = int(sys.argv[5])
-    gender = sys.argv[6]
-    if gender not in ('男', '女'):
-        print("Error: gender must be 男 or 女")
-        sys.exit(1)
-    city = sys.argv[7] if len(sys.argv) > 7 else None
+    parser = argparse.ArgumentParser(description='七政四余排盘')
+    parser.add_argument('year', type=int, help='出生年份')
+    parser.add_argument('month', type=int, help='出生月份 (1-12)')
+    parser.add_argument('day', type=int, help='出生日期 (1-31)')
+    parser.add_argument('hour', type=int, help='出生小时 (0-23)')
+    parser.add_argument('minute', type=int, help='出生分钟 (0-59)')
+    parser.add_argument('gender', choices=['男', '女'], help='性别')
+    parser.add_argument('city', nargs='?', default=None, help='出生城市（可选）')
+    args = parser.parse_args()
+    
+    try:
+        datetime(args.year, args.month, args.day, args.hour, args.minute)
+    except ValueError as e:
+        parser.error(f"无效日期时间: {e}")
+    
+    year, month, day, hour, minute, gender, city = \
+        args.year, args.month, args.day, args.hour, args.minute, args.gender, args.city
 
     # 获取基础数据（真太阳时 + 农历）
     base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
 
     dt = datetime(year, month, day, hour, minute)
-    lon = base.get('time_conversion', {}).get('longitude', 120.0)
-    lat = base.get('time_conversion', {}).get('latitude', 39.9)
+    lon = base.get('time_conversion', {}).get('longitude', 116.4074)
+    lat = base.get('time_conversion', {}).get('latitude', 39.9042)
 
     # 七政四余排盘统一使用真太阳时
     ts_str = base.get('time_conversion', {}).get('true_solar_time')
@@ -465,9 +470,10 @@ def main():
     asc = lunar_convert.get_ascendant(calc_dt, lat, lon)
     houses = calculate_houses(asc, calc_dt.year)
 
-    # 洞微大限
+    # 洞微大限（使用八字年柱天干判断阴阳，更准确）
     mingdu_zhi = ming_shen['ming_gong']['zhi']
-    daxian = get_dongwei_daxian(year, gender, mingdu_zhi)
+    year_gan = base['pillars']['year'][0]
+    daxian = get_dongwei_daxian(year_gan, gender, mingdu_zhi)
 
     result = {
         'input': {

@@ -11,9 +11,11 @@ Example:
     python bazi_pan.py 1990 5 15 14 30 男 北京
     python bazi_pan.py 1990 5 15 14 30 男
 """
+import argparse
 import json
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 import lunar_convert
@@ -129,9 +131,10 @@ def analyze_pattern(pillars, wuxing_count, day_gan, month_zhi):
                 return {'type': '从格', 'description': '日主极弱，无根气，从格成立', 'strength': '极弱'}
     
     # 正格判断
-    # 根据月令十神判断格局
-    month_gan = pillars['month'][0]
-    month_shishen = lunar_convert.get_shishen(day_gan, month_gan)
+    # 根据月令地支本气十神判断格局
+    month_zhi = pillars['month'][1]
+    month_main_qi = lunar_convert.DIZHI_CANGGAN[month_zhi][0]
+    month_shishen = lunar_convert.get_shishen(day_gan, month_main_qi)
     
     pattern_map = {
         '正官': '正官格',
@@ -267,10 +270,19 @@ def analyze_dayun_quality(dayun_list, day_gan, xiyongshen):
 
         # 简单评估：喜用神为吉，忌神为凶
         quality = '中平'
-        xiyong = xiyongshen['xiyong']
-        if shishen in yinbi_stars and xiyong.startswith('印星'):
-            quality = '吉'
-        elif shishen in kexie_stars and ('官杀' in xiyong or '食伤' in xiyong or '财星' in xiyong):
+        # 将喜用神描述展开为具体十神集合
+        xiyong_map = {
+            '印星': {'正印', '偏印'},
+            '比劫': {'比肩', '劫财'},
+            '官杀': {'正官', '七杀'},
+            '食伤': {'食神', '伤官'},
+            '财星': {'正财', '偏财'}
+        }
+        xiyong_set = set()
+        for item in xiyongshen['xiyong'].replace('、', ',').split(','):
+            item = item.strip()
+            xiyong_set.update(xiyong_map.get(item, {item}))
+        if shishen in xiyong_set:
             quality = '吉'
 
         results.append({
@@ -283,20 +295,23 @@ def analyze_dayun_quality(dayun_list, day_gan, xiyongshen):
 
 
 def main():
-    if len(sys.argv) < 7:
-        print("Usage: python bazi_pan.py <year> <month> <day> <hour> <minute> <gender> [city]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='八字排盘完整分析')
+    parser.add_argument('year', type=int, help='出生年份')
+    parser.add_argument('month', type=int, help='出生月份 (1-12)')
+    parser.add_argument('day', type=int, help='出生日期 (1-31)')
+    parser.add_argument('hour', type=int, help='出生小时 (0-23)')
+    parser.add_argument('minute', type=int, help='出生分钟 (0-59)')
+    parser.add_argument('gender', choices=['男', '女'], help='性别')
+    parser.add_argument('city', nargs='?', default=None, help='出生城市（可选）')
+    args = parser.parse_args()
     
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    day = int(sys.argv[3])
-    hour = int(sys.argv[4])
-    minute = int(sys.argv[5])
-    gender = sys.argv[6]
-    if gender not in ('男', '女'):
-        print("Error: gender must be 男 or 女")
-        sys.exit(1)
-    city = sys.argv[7] if len(sys.argv) > 7 else None
+    try:
+        datetime(args.year, args.month, args.day, args.hour, args.minute)
+    except ValueError as e:
+        parser.error(f"无效日期时间: {e}")
+    
+    year, month, day, hour, minute, gender, city = \
+        args.year, args.month, args.day, args.hour, args.minute, args.gender, args.city
 
     # 获取基础数据
     base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)

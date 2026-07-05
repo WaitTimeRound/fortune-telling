@@ -165,6 +165,7 @@ def get_true_solar_time(dt, lon):
     
     if ephem is None:
         # 无 ephem 时仅做经度修正
+        logger.warning("ephem 不可用，真太阳时仅作经度修正（忽略均时差 EOT）")
         return mean_solar
     
     # 2. 精确时差修正（Equation of Time）
@@ -193,7 +194,8 @@ def get_true_solar_time(dt, lon):
         ))
         
         # 时差（分钟），归一化到 [-720, 720] 避免环绕
-        eot_deg = (ra_apparent - ra_mean + 180) % 360 - 180
+        # EOT = 平太阳赤经 - 视太阳赤经（转换为时间）
+        eot_deg = (ra_mean - ra_apparent + 180) % 360 - 180
         eot_minutes = eot_deg * 4.0  # 1° = 4 分钟
         
         return mean_solar + timedelta(minutes=eot_minutes)
@@ -206,7 +208,7 @@ def get_true_solar_time(dt, lon):
 def get_ascendant(dt, lat, lon):
     """
     计算上升点黄道经度。
-    dt: 本地时间（北京时间）
+    dt: 本地平太阳时（已按经度修正的地方平时）
     lat, lon: 纬度、经度
     返回: 上升点黄经（度，0-360）
     """
@@ -241,6 +243,7 @@ def get_ascendant(dt, lat, lon):
 def get_planet_positions(dt, lat, lon):
     """
     计算所有行星的地心黄道经度。
+    dt: 本地平太阳时（已按经度修正的地方平时）
     返回: {planet_name: {'longitude': deg, 'sign': str, 'sign_en': str}}
     """
     if ephem is None:
@@ -286,7 +289,7 @@ def get_planet_positions(dt, lat, lon):
 
 
 def _get_mc_longitude(dt, lat, lon):
-    """计算中天（MC）黄经"""
+    """计算中天（MC）黄经。dt: 本地平太阳时"""
     if ephem is None:
         return None
     observer = ephem.Observer()
@@ -309,6 +312,7 @@ def _get_mc_longitude(dt, lat, lon):
 def get_houses(dt, lat, lon, house_system='placidus'):
     """
     计算宫位。支持等宫制（Equal House）和 Placidus。
+    dt: 本地平太阳时（已按经度修正的地方平时）
     若已安装 swisseph，Placidus 使用真正的 Placidus 算法；否则回退到近似插值。
     返回: {house_number: {'cusp': deg, 'sign': str}}
     """
@@ -387,11 +391,11 @@ def get_houses(dt, lat, lon, house_system='placidus'):
     return houses
 
 
-def get_aspects(planet_positions, orb=8):
+def get_aspects(planet_positions, orb=None):
     """
     计算行星相位。
     planet_positions: get_planet_positions 的返回值
-    orb: 容许度（度）
+    orb: 全局容许度（度），默认 None 时按相位类型使用不同容许度
     返回: [(planet1, planet2, aspect_type, angle, orb)]
     """
     aspects = []
@@ -402,8 +406,18 @@ def get_aspects(planet_positions, orb=8):
         '六分相': 60,
         '刑相': 90,
         '拱相': 120,
-        '冲相': 180,
-        '梅花相': 150
+        '梅花相': 150,
+        '冲相': 180
+    }
+    
+    # 默认按相位类型设定容许度，减少伪相位
+    DEFAULT_ORBS = {
+        '合相': 8,
+        '冲相': 8,
+        '拱相': 6,
+        '刑相': 6,
+        '六分相': 4,
+        '梅花相': 2
     }
     
     for i in range(len(planet_names)):
@@ -421,7 +435,8 @@ def get_aspects(planet_positions, orb=8):
             
             for aspect_name, target_angle in ASPECTS.items():
                 aspect_diff = abs(diff - target_angle)
-                if aspect_diff <= orb:
+                allowed_orb = orb if orb is not None else DEFAULT_ORBS[aspect_name]
+                if aspect_diff <= allowed_orb:
                     aspects.append({
                         'planet1': p1,
                         'planet2': p2,
@@ -633,10 +648,10 @@ def get_bazi_pillars(year, month, day, hour, minute, gender, city=None):
     """
     dt = datetime(year, month, day, hour, minute)
     
-    # 真太阳时计算
+    # 真太阳时计算（默认使用北京坐标，与 README 一致）
     true_solar_dt = dt
-    lon = 120.0
-    lat = 39.9
+    lon = 116.4074
+    lat = 39.9042
     location_info = None
     
     if city:
@@ -689,10 +704,11 @@ def get_bazi_pillars(year, month, day, hour, minute, gender, city=None):
         phase = lunar.getPhaseOfMoon()
     else:
         # 回退到手工计算（保留原有逻辑）
+        # 23:00 后日柱、时柱按次日计算
         year_pillar = _calc_year_pillar(ts.year)
         month_pillar = _calc_month_pillar(ts.year, ts.month, ts.day, ts.hour, ts.minute)
-        day_pillar = _calc_day_pillar(ts.year, ts.month, ts.day, ts.hour, ts.minute)
-        hour_pillar = _calc_hour_pillar(ts.year, ts.month, ts.day, ts.hour, ts.minute)
+        day_pillar = _calc_day_pillar(day_dt.year, day_dt.month, day_dt.day, day_dt.hour, day_dt.minute)
+        hour_pillar = _calc_hour_pillar(day_dt.year, day_dt.month, day_dt.day, day_dt.hour, day_dt.minute)
         nayin = get_nayin(year_pillar)
         the28 = '未知'
         solar_term = '未知'
@@ -744,14 +760,15 @@ def get_bazi_pillars(year, month, day, hour, minute, gender, city=None):
     shensha = calculate_shensha(year_gan, year_zhi, month_gan, month_zhi,
                                  day_gan, day_zhi, hour_gan, hour_zhi, gender)
     
-    # 大运
-    dayun_result = calculate_dayun(year_pillar, gender, month_pillar, dt, solar_terms_dt)
+    # 大运（以真太阳时计算起运年龄）
+    dayun_result = calculate_dayun(year_pillar, gender, month_pillar, ts, solar_terms_dt)
     
-    # 西方占星基础数据
+    # 西方占星基础数据（使用出生地地方平时，非真太阳时）
+    local_mean_dt = dt + timedelta(minutes=(lon - 120.0) * 4.0)
     western = {}
     if ephem is not None:
-        western['planets'] = get_planet_positions(dt, lat, lon)
-        western['houses'] = get_houses(dt, lat, lon)
+        western['planets'] = get_planet_positions(local_mean_dt, lat, lon)
+        western['houses'] = get_houses(local_mean_dt, lat, lon)
         western['aspects'] = get_aspects(western['planets'])
         western['ascendant'] = western['planets'].get('上升点', {})
     
@@ -764,8 +781,8 @@ def get_bazi_pillars(year, month, day, hour, minute, gender, city=None):
         'time_conversion': {
             'beijing_time': dt.strftime('%Y-%m-%d %H:%M'),
             'true_solar_time': true_solar_dt.strftime('%Y-%m-%d %H:%M') if city else None,
-            'longitude': lon if city else 120.0,
-            'latitude': lat if city else 39.9,
+            'longitude': lon if city else 116.4074,
+            'latitude': lat if city else 39.9042,
             'location': location_info
         },
         'pillars': pillars,

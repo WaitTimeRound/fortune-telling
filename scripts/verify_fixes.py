@@ -105,7 +105,8 @@ def test_invalid_gender():
             cwd=ROOT, capture_output=True, text=True
         )
         assert result.returncode != 0, f'{script} 应对非法性别报错'
-        assert 'gender must be' in (result.stdout + result.stderr), \
+        assert ('gender must be' in (result.stdout + result.stderr) or
+                'invalid choice' in (result.stdout + result.stderr)), \
             f'{script} 错误信息不完整'
     print('PASS: invalid_gender')
 

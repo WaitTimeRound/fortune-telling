@@ -12,6 +12,7 @@ Usage:
 Example:
     python western_pan.py 1990 5 15 14 30 男 北京
 """
+import argparse
 import json
 import math
 import os
@@ -65,14 +66,18 @@ def _get_sign_from_longitude(lon_deg):
 
 
 def _format_degree(deg):
-    """将度数格式化为 XX°XX' 格式"""
+    """将度数格式化为 XX°XX' 格式；deg 为 None 时返回未知"""
+    if deg is None:
+        return '未知'
     d = int(deg)
     m = int((deg - d) * 60)
     return f"{d}°{m:02d}'"
 
 
 def get_planet_in_house(planet_longitude, houses):
-    """判断行星落在哪个宫位"""
+    """判断行星落在哪个宫位；未找到时返回 None"""
+    if planet_longitude is None or not houses:
+        return None
     for i in range(1, 13):
         cusp_current = houses[i]['cusp']
         cusp_next = houses[(i % 12) + 1]['cusp']
@@ -82,7 +87,7 @@ def get_planet_in_house(planet_longitude, houses):
         else:
             if planet_longitude >= cusp_current or planet_longitude < cusp_next:
                 return i
-    return 1
+    return None
 
 
 def get_retrograde_status(dt, lat, lon, planet_en):
@@ -288,22 +293,26 @@ def find_t_squares(aspects, planet_details):
     
     for opp in oppositions:
         p1, p2 = opp['planet1'], opp['planet2']
-        # 找同时与 p1 和 p2 刑相的行星
+        # 找同时与 p1 和 p2 刑相的行星（刑相是无向关系，需考虑两种顺序）
         for sq in squares:
-            if sq['planet1'] == p1 and sq['planet2'] not in (p1, p2):
+            if (sq['planet1'] == p1 and sq['planet2'] not in (p1, p2)):
                 apex = sq['planet2']
-                # 检查 apex 是否也与 p2 刑相
-                for sq2 in squares:
-                    if (sq2['planet1'] == apex and sq2['planet2'] == p2) or \
-                       (sq2['planet2'] == apex and sq2['planet1'] == p2):
-                        t_squares.append({
-                            'type': 't_square',
-                            'description': f"{p1} 冲 {p2}，{apex} 刑两者",
-                            'opposition': [p1, p2],
-                            'apex': apex,
-                            'planets': [p1, p2, apex]
-                        })
-                        break
+            elif (sq['planet2'] == p1 and sq['planet1'] not in (p1, p2)):
+                apex = sq['planet1']
+            else:
+                continue
+            # 检查 apex 是否也与 p2 刑相
+            for sq2 in squares:
+                if (sq2['planet1'] == apex and sq2['planet2'] == p2) or \
+                   (sq2['planet2'] == apex and sq2['planet1'] == p2):
+                    t_squares.append({
+                        'type': 't_square',
+                        'description': f"{p1} 冲 {p2}，{apex} 刑两者",
+                        'opposition': [p1, p2],
+                        'apex': apex,
+                        'planets': [p1, p2, apex]
+                    })
+                    break
     
     return t_squares
 
@@ -397,20 +406,23 @@ def build_patterns(planet_details, houses, aspects):
 
 
 def main():
-    if len(sys.argv) < 8:
-        print("Usage: python western_pan.py <year> <month> <day> <hour> <minute> <gender> <city>")
-        sys.exit(1)
-
-    year = int(sys.argv[1])
-    month = int(sys.argv[2])
-    day = int(sys.argv[3])
-    hour = int(sys.argv[4])
-    minute = int(sys.argv[5])
-    gender = sys.argv[6]
-    if gender not in ('男', '女'):
-        print("Error: gender must be 男 or 女")
-        sys.exit(1)
-    city = sys.argv[7]
+    parser = argparse.ArgumentParser(description='西方占星排盘')
+    parser.add_argument('year', type=int, help='出生年份')
+    parser.add_argument('month', type=int, help='出生月份 (1-12)')
+    parser.add_argument('day', type=int, help='出生日期 (1-31)')
+    parser.add_argument('hour', type=int, help='出生小时 (0-23)')
+    parser.add_argument('minute', type=int, help='出生分钟 (0-59)')
+    parser.add_argument('gender', choices=['男', '女'], help='性别')
+    parser.add_argument('city', help='出生城市')
+    args = parser.parse_args()
+    
+    try:
+        datetime(args.year, args.month, args.day, args.hour, args.minute)
+    except ValueError as e:
+        parser.error(f"无效日期时间: {e}")
+    
+    year, month, day, hour, minute, gender, city = \
+        args.year, args.month, args.day, args.hour, args.minute, args.gender, args.city
 
     # 获取基础数据
     base = lunar_convert.get_bazi_pillars(year, month, day, hour, minute, gender, city)
@@ -421,36 +433,39 @@ def main():
     aspects = western.get('aspects', {})
 
     dt = datetime(year, month, day, hour, minute)
-    lon = base.get('time_conversion', {}).get('longitude', 120.0)
-    lat = base.get('time_conversion', {}).get('latitude', 39.9)
+    lon = base.get('time_conversion', {}).get('longitude', 116.4074)
+    lat = base.get('time_conversion', {}).get('latitude', 39.9042)
 
     # 1. Big Three
     asc = western.get('ascendant', {})
+    sun_lon = planets.get('太阳', {}).get('longitude')
+    moon_lon = planets.get('月亮', {}).get('longitude')
+    asc_lon = asc.get('longitude')
     big_three = {
         'sun': {
             'name': '太阳',
             'sign': planets.get('太阳', {}).get('sign', '未知'),
             'sign_en': planets.get('太阳', {}).get('sign_en', 'Unknown'),
-            'degree': _format_degree(planets.get('太阳', {}).get('longitude', 0) % 30),
-            'longitude': planets.get('太阳', {}).get('longitude', 0),
-            'house': get_planet_in_house(planets.get('太阳', {}).get('longitude', 0), houses),
+            'degree': _format_degree(sun_lon % 30 if sun_lon is not None else None),
+            'longitude': sun_lon,
+            'house': get_planet_in_house(sun_lon, houses),
             'description': '核心身份、生命力、显意识的自我'
         },
         'moon': {
             'name': '月亮',
             'sign': planets.get('月亮', {}).get('sign', '未知'),
             'sign_en': planets.get('月亮', {}).get('sign_en', 'Unknown'),
-            'degree': _format_degree(planets.get('月亮', {}).get('longitude', 0) % 30),
-            'longitude': planets.get('月亮', {}).get('longitude', 0),
-            'house': get_planet_in_house(planets.get('月亮', {}).get('longitude', 0), houses),
+            'degree': _format_degree(moon_lon % 30 if moon_lon is not None else None),
+            'longitude': moon_lon,
+            'house': get_planet_in_house(moon_lon, houses),
             'description': '情感景观、潜意识习惯、安全感来源'
         },
         'ascendant': {
             'name': '上升点',
             'sign': asc.get('sign', '未知'),
             'sign_en': asc.get('sign_en', 'Unknown'),
-            'degree': _format_degree(asc.get('longitude', 0) % 30),
-            'longitude': asc.get('longitude', 0),
+            'degree': _format_degree(asc_lon % 30 if asc_lon is not None else None),
+            'longitude': asc_lon,
             'house': 1,
             'description': '外在行为、社会面具、人生路径'
         }
