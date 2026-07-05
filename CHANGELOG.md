@@ -23,10 +23,6 @@
 - 修复 `scripts/western_pan.py` `get_planet_in_house` 未找到宫位时默认返回 1 的问题
 - 更新 `scripts/verify_fixes.py` 以适配新的 argparse 错误信息
 
-## 2026-07-05
-
-### 文档审查与修正
-
 ### 文档审查与修正
 
 - 修正 `references/qizheng-guide.md` 中罗睺/计都南北交点定义，与 `scripts/qizheng_pan.py` 脚本保持一致（罗睺 = 升交点/北交点，计都 = 降交点/南交点）
